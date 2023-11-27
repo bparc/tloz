@@ -129,7 +129,6 @@ static game_object_t* spawn(game_state_t* state, int32_t X, int32_t Y, entity_ty
 	result->X = X;
 	result->Y = Y;
 	result->Base = V2(X, Y);
-	result->Facing = PickRandomCardinalDir();
 	return result;
 }
 

@@ -76,11 +76,6 @@ static int32_t Host(framebuffer_t* framebuffer, chr_ram_t* RAM, void* memory,
 		if ((state->RequestedRoom == 0))
 		{
 			// PLAYER
-			if (!state->Player.IsAttacking)
-			{
-				Move(state, &state->Player, cons->DPad, 60, dT, MOVE_ALIGN);
-			}
-			state->Player.tRecovery += dT;
 			if (cons->A)
 			{
 				if (!state->Player.IsAttacking && (state->Player.tRecovery >= 0.2f))
@@ -95,28 +90,33 @@ static int32_t Host(framebuffer_t* framebuffer, chr_ram_t* RAM, void* memory,
 						Sword->Position.x = entity->X + 8;
 					}
 					else
-					if (entity->Facing.x < 0)
-					{
-						Sword->Position.x = entity->X - 24;
-					}
-					else
-					if (entity->Facing.y > 0)
-					{
-						Sword->Position.x = entity->X - 2;
-						Sword->Position.y = entity->Y + 8;
-					}
-					else
-					if (entity->Facing.y < 0)
-					{
-						Sword->Position.x = entity->X - 2;
-						Sword->Position.y = (entity->Y - 24)-1;
-					}
+						if (entity->Facing.x < 0)
+						{
+							Sword->Position.x = entity->X - 24;
+						}
+						else
+							if (entity->Facing.y > 0)
+							{
+								Sword->Position.x = entity->X - 2;
+								Sword->Position.y = entity->Y + 8;
+							}
+							else
+								if (entity->Facing.y < 0)
+								{
+									Sword->Position.x = entity->X - 2;
+									Sword->Position.y = (entity->Y - 24) - 1;
+								}
 					for (int32_t index = 0; index < state->EntityCount; index++)
 					{
 						game_object_t* B = state->Entities + index;
 					}
 				}
 			}
+			if (!state->Player.IsAttacking)
+			{
+				Move(state, &state->Player, cons->DPad, 60, dT, MOVE_ALIGN);
+			}
+			state->Player.tRecovery += dT;
 			if (state->Player.IsAttacking) 
 			{
 				state->Player.tAttack += dT * 4.0f;
@@ -194,6 +194,7 @@ static int32_t Host(framebuffer_t* framebuffer, chr_ram_t* RAM, void* memory,
 					if (entity->tSpawn >= 1.0f)
 					{
 						game_object_t *result = spawn(state, entity->X, entity->Y, entity->SpawnType);
+						result->Facing = PickRandomCardinalDir();
 						result->Flags = ENT_FLAGS_ENEMY;
 						state->Entities[index--] = state->Entities[--state->EntityCount];
 					}
