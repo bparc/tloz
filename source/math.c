@@ -174,3 +174,36 @@ static v2_t Opposite(v2_t X)
 	v2_t result = { -X.x,-X.y };
 	return result;
 }
+
+static bb_t BB(int32_t X1, int32_t Y1, int32_t X2, int32_t Y2)
+{
+	bb_t result = { X1,Y1,X2,Y2 };
+	return result;
+}
+static bb_t BoundsFromRectangle(int32_t X, int32_t Y, int32_t width, int32_t height)
+{
+	bb_t result = { X, Y };
+	result.X2 = X + width;
+	result.Y2 = Y + height;
+	return result;
+}
+
+static bb_t Transform(bb_t A, v2_t B)
+{
+	bb_t result = A;
+	result.X1 += B.x;
+	result.X2 += B.x;
+	result.Y1 += B.y;
+	result.Y2 += B.y;
+	return result;
+}
+
+static int32_t TestBounds(bb_t A, bb_t B)
+{
+	int32_t T1 = A.Max.x < B.Min.x;
+	int32_t T2 = B.Max.x < A.Min.x;
+	int32_t T3 = B.Max.y < A.Min.y;
+	int32_t T4 = A.Max.y < B.Min.y;
+	int32_t result = !(T1 || T2 || T3 || T4);
+	return result;
+}

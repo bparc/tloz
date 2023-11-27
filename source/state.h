@@ -16,6 +16,7 @@ typedef enum
 	ENT_TEKTITE,
 	ENT_KEESE,
 	ENT_SPAWN,
+	ENT_PARTICLE_EFFECT,
 } entity_type_t;
 
 typedef enum
@@ -30,7 +31,14 @@ typedef struct
 	int32_t Flags;
 	int32_t Removed;
 	v2f_t Offset;
-	int32_t X, Y;
+	union
+	{
+		struct
+		{
+			int32_t X, Y;
+		};
+		v2_t Position;
+	};
 	v2_t Base;
 	bb_t Bounds;
 	bb_t HitBox;
@@ -81,9 +89,27 @@ static void SetPosition(game_object_t* entity, v2_t X)
 	entity->Y = X.y;
 }
 
+static bb_t TransformedBoundsFromEntity(game_object_t* entity)
+{
+	bb_t result = entity->Bounds;
+	result.Min = result.Max = entity->Position;
+	result.X1 += entity->Bounds.X1;
+	result.X2 += entity->Bounds.X2;
+	result.Y1 += entity->Bounds.Y1;
+	result.Y2 += entity->Bounds.Y2;
+	return result;
+}
+
+static int32_t TestOverlap(game_object_t* A, game_object_t* B)
+{
+	int32_t result = TestBounds(
+		TransformedBoundsFromEntity(A),
+		TransformedBoundsFromEntity(B));
+	return result;
+}
+
 typedef struct
 {
-	v2_t Position;
 	bb_t Bounds;
 } sword_t;
 
@@ -253,6 +279,7 @@ static int32_t _Init(game_state_t* state)
 #undef Y
 			// LOAD MAP FROM ROOM DATA
 			LoadRoomFromData(state, &state->Rooms[0]);
+
 			// INIT PLAYER
 			game_object_t* entity = &state->Player;
 			entity->Type = ENT_PLAYER;
