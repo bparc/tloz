@@ -14,7 +14,7 @@ static void DrawLink(framebuffer_t* buffer, const chr_ram_t* RAM,const game_obje
 		}
 		else
 		{
-			BlitCHR32x32(buffer, RAM, PAL_GREEN, X, Y, 0, CHR_OFFSET16(CHR_LINK_ATTACK_N,offset));
+			BlitCHR32x32(buffer, RAM, PAL_GREEN, X, Y, 0, CHR(CHR_LINK_ATTACK_N,offset));
 			//BlitTile16x32(buffer, RAM, PAL_RED, buffer->Base.x + Sword.Position.x, buffer->Base.y + Sword.Position.y, 0, entity->Facing.y > 0, CHR_SWORD_N);
 			BlitRectangle(buffer, Sword.Position.x, Sword.Position.y, 4, 16, RGB(255, 0, 0));
 		}
@@ -25,38 +25,29 @@ static void DrawLink(framebuffer_t* buffer, const chr_ram_t* RAM,const game_obje
 		int32_t frame = (int32_t)fmodf(entity->tMove * 6.0f, (float)framecount);
 		if (E)
 		{
-			BlitCHR32x32(buffer, RAM, PAL_GREEN, X, Y, entity->Facing.x < 0, CHR_OFFSET16(CHR_LINK_E, frame % 2));
+			BlitCHR32x32(buffer, RAM, PAL_GREEN, X, Y, entity->Facing.x < 0, CHR(CHR_LINK_E, frame % 2));
 		}
 		else
 		{
-			BlitCHR32x32(buffer, RAM, PAL_GREEN, X, Y, frame % 2, CHR_OFFSET16(CHR_LINK_N, offset));
+			BlitCHR32x32(buffer, RAM, PAL_GREEN, X, Y, frame % 2, CHR(CHR_LINK_N, offset));
 		}
 	}
 }
 
 static void DrawBitmap(framebuffer_t* buffer, const chr_ram_t* RAM, const uint32_t* palette,
-	int32_t x, int32_t y, int32_t address)
+	int32_t x, int32_t y, int32_t rotate, int32_t frame, int32_t address)
 {
-	BlitCHR32x32(buffer, RAM, palette, x, y, 0, address);
+	BlitCHR32x32(buffer, RAM, palette, x, y, rotate, (address + (frame * 64)));
 }
 
+#if 1
 static void DrawBitmapMirrorX(framebuffer_t* buffer, const chr_ram_t* RAM, const uint32_t* palette,
-	int32_t x, int32_t y, v2_t facingdir, int32_t frame, int32_t address)
+	int32_t x, int32_t y, int32_t rotate, int32_t frame, int32_t address)
 {
-	if ((abs(facingdir.x) == 1 && facingdir.y == 0))
-	{
-		address += 64 * frame;
-		BlitCHR32x32(buffer, RAM, palette, x, y,
-			(facingdir.x > 0 ? 1 : 0), address + 64);
-	}
-	else
-	{
-		int32_t Rotate = facingdir.y > 0 ? 0 : 1;
-		address += 32 * frame;
-		BlitCHR16x32(buffer, RAM, PAL_RED, x + 0, y, 0, Rotate, address);
-		BlitCHR16x32(buffer, RAM, PAL_RED, x + 8, y, 1, Rotate, address);
-	}
+	BlitCHR16x32(buffer, RAM, palette, x + 0, y, 0, rotate, (address+(frame*32)));
+	BlitCHR16x32(buffer, RAM, palette, x + 8, y, 1, rotate, (address+(frame*32)));
 }
+#endif
 
 static void DrawWall(framebuffer_t* buffer, const chr_ram_t* RAM,
 	int32_t W, int32_t H, int32_t X, int32_t Y)
@@ -102,7 +93,7 @@ static void DrawTileMap(framebuffer_t* buffer, const chr_ram_t* RAM, const uint8
 			else
 			{
 				BlitCHR32x32(buffer, RAM, PAL_BLUE, X + (x * 16), Y + (y * 16),
-					0, CHR_OFFSET16(CHR_BANK2, value));
+					0, CHR(CHR_BANK2, value));
 			}
 		}
 	}
@@ -153,7 +144,24 @@ static void _DrawFrame(framebuffer_t* buffer, const game_state_t* state, const c
 			case ENT_OCTOROCK:
 			{
 				int32_t frame = (int32_t)fmodf((float)time * 5.0f, 2.0f);
-				DrawBitmapMirrorX(buffer, RAM, PAL_RED, X, Y, entity->Facing, frame, CHR_OCTOROCK);
+				//DrawBitmapMirrorX(buffer, RAM, PAL_RED, X, Y, entity->Facing, frame, CHR_OCTOROCK);
+				v2_t facingdir = entity->Facing;
+				if ((abs(facingdir.x) == 1 && facingdir.y == 0))
+				{
+					DrawBitmap(buffer, RAM, PAL_RED, X, Y, (facingdir.x > 0 ? 1 : 0), frame, CHR(CHR_OCTOROCK,1));
+				}
+				else
+				{
+					DrawBitmapMirrorX(buffer, RAM, PAL_RED, X, Y, facingdir.y > 0 ? 0 : 1, frame, CHR_OCTOROCK);
+				}
+			} break;
+			case ENT_TEKTITE:
+			{
+				DrawBitmapMirrorX(buffer, RAM, PAL_RED, X, Y, 0, (int32_t)(time * 5.0f) % 2, CHR_TEKTITE);
+			} break;
+			case ENT_KEESE:
+			{
+				DrawBitmapMirrorX(buffer, RAM, PAL_BLUE_ALPHA, X, Y, 0, (int32_t)(time * 5.0f) % 2, CHR_KEESE);
 			} break;
 			case ENT_BULLET:
 			{
@@ -162,8 +170,9 @@ static void _DrawFrame(framebuffer_t* buffer, const game_state_t* state, const c
 			} break;
 			case ENT_SPAWN:
 			{
-				int32_t R = LerpI(0, 255, sinf(entity->tSpawn));
-				BlitRectangle(buffer, X, Y, 16, 16, RGB(R, R, 255-R));
+				//int32_t R = LerpI(0, 255, sinf(entity->tSpawn));
+				//BlitRectangle(buffer, X, Y, 16, 16, RGB(R, R, 255-R));
+				DrawBitmapMirrorX(buffer, RAM, PAL_RED, X, Y, 0, (int32_t)(entity->tSpawn * 2.0f), CHR_EFFECT_SPAWN);
 			} break;
 			}
 			//BlitBoundingBox(buffer, baseX + entity->X, baseY + entity->Y, entity->Bounds, RGB(255, 255, 255));
@@ -178,8 +187,8 @@ static void _DrawFrame(framebuffer_t* buffer, const game_state_t* state, const c
 		const game_object_t* entity = &state->Player;
 		int32_t X = (buffer->x * -exitdir.x);
 		int32_t Y = ((buffer->y - 64) * exitdir.y);
-		int32_t cameraX = LerpI(0, X, state->tTransit);
-		int32_t cameraY = LerpI(0, Y, state->tTransit);
+		int32_t cameraX = Lerp(0, X, state->tTransit);
+		int32_t cameraY = Lerp(0, Y, state->tTransit);
 		DrawTileMap(buffer, RAM, map->Tiles, map->x, map->y, cameraX, cameraY, map->DoorAlign);
 		DrawTileMap(buffer,RAM,state->RequestedRoom->Tiles,map->x,map->y, (cameraX - X), (cameraY - Y), map->DoorAlign);
 		DrawWall(buffer,RAM,map->x,map->y,cameraX,cameraY);
@@ -196,6 +205,8 @@ static void _DrawFrame(framebuffer_t* buffer, const game_state_t* state, const c
 #else // NOTE: CHR banks
 	{
 		///BlitCHR16(buffer, RAM, PAL_BLUE, 0, 0, 0, );
+		SetCoordinateSystem(buffer, 0, 0);
+#if 1
 		int32_t off = 0;
 		for (int32_t y = 0; y < 16; y++)
 		{
@@ -204,13 +215,15 @@ static void _DrawFrame(framebuffer_t* buffer, const game_state_t* state, const c
 				BlitCHR32x32(
 					buffer,
 					RAM,
-					PAL_GREEN,
+					PAL_BLUE,
 					x * 16,
 					y * 16,
 					0,
-					CHR_OFFSET16(CHR_BANK2, off++));
+					CHR(CHR_BANK2, off++));
 			}
 		}
+#else
+#endif
 	}
 #endif
 }

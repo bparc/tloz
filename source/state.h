@@ -13,21 +13,27 @@ typedef enum
 	ENT_PLAYER,
 	ENT_BULLET,
 	ENT_OCTOROCK,
+	ENT_TEKTITE,
+	ENT_KEESE,
 	ENT_SPAWN,
 } entity_type_t;
+
+typedef enum
+{
+	ENT_FLAGS_ENEMY = 1 << 0,
+} game_object_flags_t;
 
 typedef struct
 {
 	entity_type_t Type;
 
-	// TODO: These propably should be returned by MoveAligned? 
-	int32_t MoveIntersection;
-	int32_t ExitedRoom;
-	//
-
+	int32_t Flags;
+	int32_t Removed;
 	v2f_t Offset;
 	int32_t X, Y;
+	v2_t Base;
 	bb_t Bounds;
+	bb_t HitBox;
 
 	union
 	{
@@ -43,25 +49,49 @@ typedef struct
 			float tAttack;
 			float tRecovery;
 			int32_t IsAttacking;
-		};
+		}; // Player
 		struct
 		{
 			float tChangeMovingDir;
 			float tShoot;
-		};
+		}; // Octorock, Keese
+		struct
+		{
+			float tJump;
+			v2_t JumpFrom;
+			v2_t JumpTo;
+			int32_t HasJumped;
+		}; // Tektite
 		struct
 		{
 			int32_t SpawnType;
 			float tSpawn;
-		};
+		}; // Spawn
 	};
 } game_object_t;
+
+static void Remove(game_object_t* entity)
+{
+	entity->Removed = TRUE;
+}
+
+static void SetPosition(game_object_t* entity, v2_t X)
+{
+	entity->X = X.x;
+	entity->Y = X.y;
+}
 
 typedef struct
 {
 	v2_t Position;
 	bb_t Bounds;
 } sword_t;
+
+enum
+{
+	MOVE_ALIGN = 1 << 0,
+	MOVE_DO_NOT_INTERSECT = 1 << 1
+} move_flags_t;
 
 typedef struct
 {
@@ -82,19 +112,28 @@ typedef struct
 	room_data_t *RequestedRoom;
 } game_state_t;
 
+typedef enum
+{
+	INTERSECT_TILE = 1 << 1,
+	INTERSECT_OUT_OF_BOUNDS = 1 << 2,
+} intersection_flags_t;
+
+static void Intersect(game_state_t* state, game_object_t* entity, v2_t N, int32_t flags);
+
 static game_object_t* spawn(game_state_t* state, int32_t X, int32_t Y, entity_type_t type)
 {
 	assert(state->EntityCount < ArrayCount(state->Entities));
-	game_object_t* result = state->Entities + state->EntityCount++;;
+	game_object_t* result = state->Entities + state->EntityCount++;
 	memset(result, 0, sizeof(*result));
 	result->Type = type;
 	result->X = X;
 	result->Y = Y;
+	result->Base = V2(X, Y);
 	result->Facing = PickRandomCardinalDir();
 	return result;
 }
 
-static game_object_t* SpawnBullet(game_state_t* state, int32_t X, int32_t Y, v2_t direction, int32_t flags)
+static game_object_t* CreateProjectile(game_state_t* state, int32_t X, int32_t Y, v2_t direction, int32_t flags)
 {
 	game_object_t* result = spawn(state, X, Y, ENT_BULLET);
 	result->Facing = direction;
@@ -102,6 +141,13 @@ static game_object_t* SpawnBullet(game_state_t* state, int32_t X, int32_t Y, v2_
 	result->Bounds.X2 = +5;
 	result->Bounds.Y1 = -5;
 	result->Bounds.Y2 = +5;
+	return result;
+}
+
+static game_object_t* CreateSpawn(game_state_t *state, int32_t x, int32_t y, int32_t Type)
+{
+	game_object_t* result = spawn(state, x, y, ENT_SPAWN);
+	result->SpawnType = Type;
 	return result;
 }
 
@@ -123,11 +169,15 @@ static room_data_t RoomData(char* tiles, int32_t X, int32_t Y)
 			{
 			case 'O':
 			{
-				assert(result.SpawnerCount < ArrayCount(result.Spawners));
-				enemy_spawn_t* Spawn = result.Spawners + result.SpawnerCount++;
-				Spawn->Type = ENT_OCTOROCK;
-				Spawn->x = x * 16;
-				Spawn->y = y * 16;
+				PushSpawn(&result, ENT_OCTOROCK, x, y);
+			} break;
+			case 'T':
+			{
+				PushSpawn(&result, ENT_TEKTITE, x, y);
+			} break;
+			case 'K':
+			{
+				PushSpawn(&result, ENT_KEESE, x, y);
 			} break;
 			default:
 				C = tiles[y * X + x];
@@ -147,8 +197,7 @@ static void LoadRoomFromData(game_state_t*state, room_data_t* Room)
 	for (int32_t index = 0; index < Room->SpawnerCount; index++)
 	{
 		enemy_spawn_t* Spawn = Room->Spawners + index;
-		game_object_t* result = spawn(state, Spawn->x, Spawn->y, ENT_SPAWN);
-		result->SpawnType = Spawn->Type;
+		CreateSpawn(state, Spawn->x, Spawn->y, Spawn->Type);
 	}
 }
 
@@ -162,10 +211,10 @@ static int32_t _Init(game_state_t* state)
 #define Y 7
 			static char Room_0[Y][X] =
 			{
-				' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '#', ' ', ' ',
+				' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '#', 'T', ' ',
 				' ', ' ', ' ', 'O', ' ', ' ', ' ', ' ', ' ', '#', ' ', ' ',
-				' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '#', ' ', 'O',
-				' ', ' ', ' ', 'O', ' ', ' ', ' ', ' ', ' ', '#', ' ', ' ',
+				' ', ' ', ' ', ' ', ' ', 'K', ' ', ' ', 'K', '#', ' ', 'O',
+				' ', 'T', ' ', 'O', ' ', ' ', ' ', ' ', ' ', '#', ' ', ' ',
 				' ', ' ', ' ', ' ', ' ', ' ', 'O', ' ', ' ', '#', ' ', ' ',
 				' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
 				' ', ' ', ' ', ' ', ' ', ' ', '!', '!', '!', '#', ' ', ' ',
@@ -197,7 +246,7 @@ static int32_t _Init(game_state_t* state)
 			map->x = X;
 			map->y = Y;
 			map->TileHeight = 16;
-			map->Extends = V2I(map->x * map->TileHeight, map->y * map->TileHeight);
+			map->Extends = V2(map->x * map->TileHeight, map->y * map->TileHeight);
 			map->DoorAlign[1] = (map->y / 2) * map->TileHeight;
 			map->DoorAlign[0] = (map->Extends.x / 2) - (map->TileHeight / 2);
 
@@ -214,14 +263,14 @@ static int32_t _Init(game_state_t* state)
 			entity->Bounds.X2 = 0 + 6;
 			entity->Bounds.Y1 = 0;
 			entity->Bounds.Y2 = 0 + 7;
-			entity->Facing = V2I(0, 1);
+			entity->Facing = V2(0, 1);
 		}
 		state->MemoryInitialized = TRUE;
 	}
 	return result;
 }
 
-static void RequestRoomTransition(game_state_t* state)
+static void RoomTransition(game_state_t* state)
 {
 	if ((state->RequestedRoom == 0))
 	{
@@ -235,67 +284,65 @@ static void RequestRoomTransition(game_state_t* state)
 	}
 }
 
-static void movex(game_state_t* state, game_object_t* entity, int32_t offset)
+static void movex(game_state_t* state, game_object_t* entity, int32_t offset, int32_t flags)
 {
 	int32_t dT = offset >= 0 ? 1 : -1;
 	entity->X += dT;
-	for (int32_t y = ((entity->Y + entity->Bounds.Y1) / state->Map.TileHeight);
-		y <= ((entity->Y + entity->Bounds.Y2) / state->Map.TileHeight);
-		y++)
+	if (!(flags & MOVE_DO_NOT_INTERSECT))
 	{
-		int32_t x = dT > 0 ?
-			(entity->X + entity->Bounds.X2) / state->Map.TileHeight :
-			(entity->X + entity->Bounds.X1) / state->Map.TileHeight;
-		if (GetTileValue(&state->Map, x, y) == 16)
+		for (int32_t y = ((entity->Y + entity->Bounds.Y1) / state->Map.TileHeight);
+			y <= ((entity->Y + entity->Bounds.Y2) / state->Map.TileHeight);
+			y++)
 		{
-			entity->X -= dT;
-			entity->MoveIntersection = TRUE;
-			goto Return;
+			int32_t x = dT > 0 ?
+				(entity->X + entity->Bounds.X2) / state->Map.TileHeight :
+				(entity->X + entity->Bounds.X1) / state->Map.TileHeight;
+			if (GetTileValue(&state->Map, x, y) == 16)
+			{
+				entity->X -= dT;
+				Intersect(state, entity, V2(-dT, 0), INTERSECT_TILE);
+				return;
+			}
 		}
 	}
-Return:
-	return;
 }
 
-static void movey(game_state_t* state, game_object_t* entity, int32_t offset)
+static void movey(game_state_t* state, game_object_t* entity, int32_t offset, int32_t flags)
 {
 	int32_t dT = offset >= 0 ? 1 : -1;
 	entity->Y += dT;
-	for (int32_t x = ((entity->X + entity->Bounds.X1) / state->Map.TileHeight);
-		x <= ((entity->X + entity->Bounds.X2) / state->Map.TileHeight);
-		x++)
+	if (!(flags & MOVE_DO_NOT_INTERSECT))
 	{
-		int32_t y = dT > 0 ?
-			(entity->Y + entity->Bounds.Y2) / state->Map.TileHeight :
-			(entity->Y + entity->Bounds.Y1) / state->Map.TileHeight;
-		if (GetTileValue(&state->Map, x, y) == 16)
+		for (int32_t x = ((entity->X + entity->Bounds.X1) / state->Map.TileHeight);
+			x <= ((entity->X + entity->Bounds.X2) / state->Map.TileHeight);
+			x++)
 		{
-			entity->Y -= dT;
-			entity->MoveIntersection = TRUE;
-			goto Return;
-		}
+			int32_t y = dT > 0 ?
+				(entity->Y + entity->Bounds.Y2) / state->Map.TileHeight :
+				(entity->Y + entity->Bounds.Y1) / state->Map.TileHeight;
+			if (GetTileValue(&state->Map, x, y) == 16)
+			{
+				entity->Y -= dT;
+				Intersect(state, entity, V2(0, -dT), INTERSECT_TILE);
+				return;
+			}
 
+		}
 	}
-Return:
-	return;
 }
 
-static void MoveAligned(game_state_t* state, game_object_t* entity, v2_t dir, int32_t speed, float dt)
+static void Move(game_state_t* state, game_object_t* entity, v2_t dir, int32_t speed, float dt, int32_t flags)
 {
-	entity->MoveIntersection = 0;
-	entity->ExitedRoom = 0;
-
-	// UPDATE FACING DIR
+	// SET FACING DIR
 	if ((dir.x != 0) || (dir.y != 0))
 	{
 		entity->Facing = dir;
 		entity->tMove += dt;
 	}
-
 	// INTEGRATE
-	entity->Offset.x += ((float)dir.x * (float)speed * dt);
-	entity->Offset.y += ((float)dir.y * (float)speed * dt);
-
+	v2f_t N = NormalizeI(dir);
+	entity->Offset.x += (N.x * (float)speed * dt);
+	entity->Offset.y += (N.y * (float)speed * dt);
 	// MOVE
 	int32_t steps;
 	int32_t X = (int32_t)floorf(entity->Offset.x);
@@ -303,18 +350,18 @@ static void MoveAligned(game_state_t* state, game_object_t* entity, v2_t dir, in
 	if (steps--)
 	{
 		int32_t Ymod = (entity->Y) % 8;
-		if (Ymod == 0)
+		if (Ymod == 0 || !(flags & MOVE_ALIGN))
 		{
-			movex(state, entity, X);
+			movex(state, entity, X,flags);
 		}
 		else
 		if (Ymod > 4)
 		{
-			movey(state, entity, +1);
+			movey(state, entity, +1,flags);
 		}
 		else
 		{
-			movey(state, entity, -1);
+			movey(state, entity, -1,flags);
 		}
 		entity->Offset.x = Remainder(X, entity->Offset.x);
 	}
@@ -323,47 +370,44 @@ static void MoveAligned(game_state_t* state, game_object_t* entity, v2_t dir, in
 	while (steps--)
 	{
 		int32_t Xmod = (entity->X) % 8;
-		if (Xmod == 0)
+		if (Xmod == 0 || !(flags & MOVE_ALIGN))
 		{
-			movey(state, entity, Y);
+			movey(state, entity, Y,flags);
 		}
 		else
 		if (Xmod > 4)
 		{
-			movex(state, entity, +1);
+			movex(state, entity, +1,flags);
 		}
 		else
 		{
-			movex(state, entity, -1);
+			movex(state, entity, -1,flags);
 		}
 		entity->Offset.y = Remainder(Y, entity->Offset.y);
 	}
-	// BOUND
-	int32_t door_triggers[2] = {
-		((entity->X - state->Map.DoorAlign[0]) == 8),
-		((entity->Y - state->Map.DoorAlign[1]) == 8) };
-	v2_t min = SubI(V2I(0, 0), entity->Bounds.Min);
+	// BOUNDS
+	v2_t min = SubI(V2(0, 0), entity->Bounds.Min);
 	v2_t max = SubI(state->Map.Extends, entity->Bounds.Max);
 	if (entity->X < min.x)
 	{
-		entity->ExitedRoom = (door_triggers[1] && (entity->Facing.x == -1));
 		entity->X = min.x;
-		entity->MoveIntersection = TRUE;
+		Intersect(state, entity, V2(+1, 0), INTERSECT_OUT_OF_BOUNDS);
 	}
+	else
 	if (entity->X > max.x)
 	{
-		entity->ExitedRoom = (door_triggers[1] && (entity->Facing.x == +1));
 		entity->X = max.x;
-		entity->MoveIntersection = TRUE;
+		Intersect(state, entity, V2(-1, 0), INTERSECT_OUT_OF_BOUNDS);
 	}
 	if (entity->Y < min.y)
 	{
 		entity->Y = min.y;
-		entity->MoveIntersection = TRUE;
+		Intersect(state, entity, V2(0, +1), INTERSECT_OUT_OF_BOUNDS);
 	}
+	else
 	if (entity->Y > max.y)
 	{
 		entity->Y = max.y;
-		entity->MoveIntersection = TRUE;
+		Intersect(state, entity, V2(0, -1), INTERSECT_OUT_OF_BOUNDS);
 	}
 }

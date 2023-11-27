@@ -12,6 +12,16 @@ typedef struct
 	enemy_spawn_t Spawners[10];
 } room_data_t;
 
+static enemy_spawn_t *PushSpawn(room_data_t* Room, int32_t Type,int32_t tilex, int32_t tiley)
+{
+	assert(Room->SpawnerCount < ArrayCount(Room->Spawners));
+	enemy_spawn_t* result = Room->Spawners + Room->SpawnerCount++;
+	result->Type = Type;
+	result->x = tilex * 16;
+	result->y = tiley * 16;
+	return result;
+}
+
 typedef struct
 {
 	int32_t TileHeight;
