@@ -90,22 +90,22 @@ static int32_t Host(framebuffer_t* framebuffer, chr_ram_t* RAM, void* memory,
 						Sword->Position.x = entity->X + 8;
 					}
 					else
-						if (entity->Facing.x < 0)
-						{
-							Sword->Position.x = entity->X - 24;
-						}
-						else
-							if (entity->Facing.y > 0)
-							{
-								Sword->Position.x = entity->X - 2;
-								Sword->Position.y = entity->Y + 8;
-							}
-							else
-								if (entity->Facing.y < 0)
-								{
-									Sword->Position.x = entity->X - 2;
-									Sword->Position.y = (entity->Y - 24) - 1;
-								}
+					if (entity->Facing.x < 0)
+					{
+						Sword->Position.x = entity->X - 24;
+					}
+					else
+					if (entity->Facing.y > 0)
+					{
+						Sword->Position.x = entity->X - 2;
+						Sword->Position.y = entity->Y + 8;
+					}
+					else
+					if (entity->Facing.y < 0)
+					{
+						Sword->Position.x = entity->X - 2;
+						Sword->Position.y = (entity->Y - 24) - 1;
+					}
 					for (int32_t index = 0; index < state->EntityCount; index++)
 					{
 						game_object_t* B = state->Entities + index;
