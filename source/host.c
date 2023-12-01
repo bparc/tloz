@@ -188,10 +188,6 @@ static int32_t Host(framebuffer_t* framebuffer, chr_ram_t* RAM, void* memory,
 							entity->X = ClampI(entity->X, 0, state->Map.Extends.x);
 						}
 					} break;
-					case ENT_ZORA:
-					{
-
-					} break;
 					case ENT_PROJECTILE_OCTOROCK:
 					{
 						MoveI(state, Generic, Generic->Facing, 150, dT, 0);

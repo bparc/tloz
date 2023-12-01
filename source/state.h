@@ -15,7 +15,6 @@ typedef enum
 	ENT_OCTOROCK,
 	ENT_TEKTITE,
 	ENT_KEESE,
-	ENT_ZORA,
 	ENT_SPAWN,
 	ENT_PARTICLE_EFFECT,
 } entity_type_t;
@@ -26,25 +25,25 @@ typedef enum
 	ENT_FLAGS_CAN_DAMAGE = 1 << 1,
 } game_object_flags_t;
 
-#define entity_t struct \
-{\
-	entity_type_t Type;\
-int32_t Flags;\
-int32_t WasRemoved;\
-v2f_t Offset;\
-union\
-{\
-	struct\
-	{\
-		int32_t X, Y;\
-	};\
-	v2_t Position;\
-};\
-v2_t Base;\
-bb_t Bounds;\
-v2_t Facing;\
-float tMove;\
-}
+typedef struct
+{
+	entity_type_t Type;
+	int32_t Flags;
+	int32_t WasRemoved;
+	v2f_t Offset;
+	union
+	{
+		struct
+		{
+			int32_t X, Y;
+		};
+		v2_t Position;
+	};
+	v2_t Base;
+	bb_t Bounds;
+	v2_t Facing;
+	float tMove;
+} entity_t;
 
 typedef struct
 {
