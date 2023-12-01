@@ -11,10 +11,11 @@ typedef enum
 	ENT_NONE,
 	ENT_EMPTY,
 	ENT_PLAYER,
-	ENT_BULLET,
+	ENT_PROJECTILE_OCTOROCK,
 	ENT_OCTOROCK,
 	ENT_TEKTITE,
 	ENT_KEESE,
+	ENT_ZORA,
 	ENT_SPAWN,
 	ENT_PARTICLE_EFFECT,
 } entity_type_t;
@@ -22,65 +23,85 @@ typedef enum
 typedef enum
 {
 	ENT_FLAGS_ENEMY = 1 << 0,
+	ENT_FLAGS_CAN_DAMAGE = 1 << 1,
 } game_object_flags_t;
+
+#define entity_t struct \
+{\
+	entity_type_t Type;\
+int32_t Flags;\
+int32_t WasRemoved;\
+v2f_t Offset;\
+union\
+{\
+	struct\
+	{\
+		int32_t X, Y;\
+	};\
+	v2_t Position;\
+};\
+v2_t Base;\
+bb_t Bounds;\
+v2_t Facing;\
+float tMove;\
+}
 
 typedef struct
 {
-	entity_type_t Type;
+	entity_t;
+	float tAttack;
+	int32_t IsAttacking;
+} ent_player_t;
 
-	int32_t Flags;
-	int32_t Removed;
-	v2f_t Offset;
-	union
-	{
-		struct
-		{
-			int32_t X, Y;
-		};
-		v2_t Position;
-	};
-	v2_t Base;
-	bb_t Bounds;
-	bb_t HitBox;
+typedef struct
+{
+	entity_t;
+	float tRemaining;
+	int32_t EnemyType;
+} ent_spawn_t;
 
-	union
-	{
-		v2_t Facing;
-		v2_t ExitDir;
-	};
+typedef struct
+{
+	entity_t;
+	float tRemaining;
+} ent_particle_t;
 
-	float tMove;
-	union
-	{
-		struct
-		{
-			float tAttack;
-			float tRecovery;
-			int32_t IsAttacking;
-		}; // Player
-		struct
-		{
-			float tChangeMovingDir;
-			float tShoot;
-		}; // Octorock, Keese
-		struct
-		{
-			float tJump;
-			v2_t JumpFrom;
-			v2_t JumpTo;
-			int32_t HasJumped;
-		}; // Tektite
-		struct
-		{
-			int32_t SpawnType;
-			float tSpawn;
-		}; // Spawn
-	};
+typedef struct
+{
+	entity_t;
+	float tChangeFacingDir;
+	float tShoot;
+} ent_octorock_t;
+
+typedef struct
+{
+	entity_t;
+	float tChangeFacingDir;
+} ent_keese_t;
+
+typedef struct
+{
+	entity_t;
+	float tJump;
+	v2_t From;
+	v2_t To;
+	int32_t HasJumped;
+} ent_tektite_t;
+
+typedef union
+{
+	entity_t;
+	ent_player_t	_Player;
+	ent_spawn_t		_Spawn;
+	ent_octorock_t	_Octorock;
+	ent_tektite_t	_Tektite;
+	ent_keese_t		_Keese;
+	ent_particle_t	_Particle;
 } game_object_t;
 
 static void Remove(game_object_t* entity)
 {
-	entity->Removed = TRUE;
+	entity->WasRemoved = TRUE;
 }
 
 static void SetPosition(game_object_t* entity, v2_t X)
@@ -158,21 +179,12 @@ static game_object_t* spawn(game_state_t* state, int32_t X, int32_t Y, entity_ty
 	return result;
 }
 
-static game_object_t* CreateProjectile(game_state_t* state, int32_t X, int32_t Y, v2_t direction, int32_t flags)
+static game_object_t* CreateProjectile(game_state_t* state, int32_t X, int32_t Y, v2_t direction)
 {
-	game_object_t* result = spawn(state, X, Y, ENT_BULLET);
+	game_object_t* result = spawn(state, X, Y, ENT_PROJECTILE_OCTOROCK);
 	result->Facing = direction;
-	result->Bounds.X1 = -5;
-	result->Bounds.X2 = +5;
-	result->Bounds.Y1 = -5;
-	result->Bounds.Y2 = +5;
-	return result;
-}
-
-static game_object_t* CreateSpawn(game_state_t *state, int32_t x, int32_t y, int32_t Type)
-{
-	game_object_t* result = spawn(state, x, y, ENT_SPAWN);
-	result->SpawnType = Type;
+	result->Bounds = BB(-5, -5, +5, +5);
+	result->Flags = ENT_FLAGS_CAN_DAMAGE;
 	return result;
 }
 
@@ -222,7 +234,8 @@ static void LoadRoomFromData(game_state_t*state, room_data_t* Room)
 	for (int32_t index = 0; index < Room->SpawnerCount; index++)
 	{
 		enemy_spawn_t* Spawn = Room->Spawners + index;
-		CreateSpawn(state, Spawn->x, Spawn->y, Spawn->Type);
+		ent_spawn_t*entity=((ent_spawn_t*)spawn(state, Spawn->x, Spawn->y, ENT_SPAWN));
+		entity->EnemyType = Spawn->Type;
 	}
 }
 
@@ -357,16 +370,33 @@ static void movey(game_state_t* state, game_object_t* entity, int32_t offset, in
 	}
 }
 
-static void Move(game_state_t* state, game_object_t* entity, v2_t dir, int32_t speed, float dt, int32_t flags)
+static void Move(game_state_t* state, game_object_t* entity, v2f_t dir, int32_t speed, float dt, int32_t flags)
 {
 	// SET FACING DIR
-	if ((dir.x != 0) || (dir.y != 0))
+#if 1
+	if (dir.x > 0.0f)
 	{
-		entity->Facing = dir;
+		entity->Facing = V2(+1, 0);
+	}
+	if (dir.x < 0.0f)
+	{
+		entity->Facing = V2(-1, 0);
+	}
+	if (dir.y > 0.0f)
+	{
+		entity->Facing = V2(0, +1);
+	}
+	if (dir.y < 0.0f)
+	{
+		entity->Facing = V2(0, -1);
+	}
+#endif
+	if (Length(dir) > 0.0f)
+	{
 		entity->tMove += dt;
 	}
 	// INTEGRATE
-	v2f_t N = NormalizeI(dir);
+	v2f_t N = Normalize(dir);
 	entity->Offset.x += (N.x * (float)speed * dt);
 	entity->Offset.y += (N.y * (float)speed * dt);
 	// MOVE
@@ -436,4 +466,8 @@ static void Move(game_state_t* state, game_object_t* entity, v2_t dir, int32_t s
 		entity->Y = max.y;
 		Intersect(state, entity, V2(0, -1), INTERSECT_OUT_OF_BOUNDS);
 	}
+}
+static void MoveI(game_state_t* state, game_object_t* entity, v2_t dir, int32_t speed, float dt, int32_t flags)
+{
+	Move(state, entity, V2F((float)dir.x, (float)dir.y), speed, dt, flags);
 }

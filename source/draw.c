@@ -1,6 +1,18 @@
 //
+static void DrawBitmap(framebuffer_t* buffer, const chr_ram_t* RAM, const uint32_t* palette,
+	int32_t x, int32_t y, int32_t rotate, int32_t frame, int32_t address)
+{
+	BlitCHR32x32(buffer, RAM, palette, x, y, rotate, (address + (frame * 64)));
+}
 
-static void DrawLink(framebuffer_t* buffer, const chr_ram_t* RAM,const game_object_t*entity,int32_t X, int32_t Y,sword_t Sword)
+static void DrawBitmapMirrorX(framebuffer_t* buffer, const chr_ram_t* RAM, const uint32_t* palette,
+	int32_t x, int32_t y, int32_t rotate, int32_t frame, int32_t address)
+{
+	BlitCHR16x32(buffer, RAM, palette, x + 0, y, 0, rotate, (address + (frame * 32)));
+	BlitCHR16x32(buffer, RAM, palette, x + 8, y, 1, rotate, (address + (frame * 32)));
+}
+
+static void DrawLink(framebuffer_t* buffer, const chr_ram_t* RAM,const ent_player_t*entity,int32_t X, int32_t Y,sword_t Sword)
 {
 	int32_t offset = entity->Facing.y > 0 ? 0 : 1;
 	int32_t E = (abs(entity->Facing.x) == 1);
@@ -9,14 +21,16 @@ static void DrawLink(framebuffer_t* buffer, const chr_ram_t* RAM,const game_obje
 		if (E)
 		{
 			BlitCHR32x32(buffer, RAM, PAL_GREEN, X, Y, entity->Facing.x < 0, CHR_LINK_ATTACK_E);
-			//BlitTile32x32(buffer, RAM, PAL_RED, buffer->Base.x + Sword.Position.x, buffer->Base.y + Sword.Position.y, entity->Facing.x < 0, CHR_SWORD_E);
+			BlitCHR32x32(buffer, RAM, PAL_RED, Sword.Bounds.X1, Sword.Bounds.Y1-7, entity->Facing.x<0, CHR_SWORD_E);
 		}
 		else
 		{
 			BlitCHR32x32(buffer, RAM, PAL_GREEN, X, Y, 0, CHR(CHR_LINK_ATTACK_N,offset));
-			//BlitTile16x32(buffer, RAM, PAL_RED, buffer->Base.x + Sword.Position.x, buffer->Base.y + Sword.Position.y, 0, entity->Facing.y > 0, CHR_SWORD_N);
+			BlitCHR16x32(buffer, RAM, PAL_RED, Sword.Bounds.X1-2, Sword.Bounds.Y1, 0, entity->Facing.y>0, CHR_SWORD_N);
 		}
+#if 0
 		BlitBoundingBox(buffer, 0, 0, Sword.Bounds, RGB(255, 0, 0));
+#endif
 	}
 	else
 	{
@@ -32,21 +46,6 @@ static void DrawLink(framebuffer_t* buffer, const chr_ram_t* RAM,const game_obje
 		}
 	}
 }
-
-static void DrawBitmap(framebuffer_t* buffer, const chr_ram_t* RAM, const uint32_t* palette,
-	int32_t x, int32_t y, int32_t rotate, int32_t frame, int32_t address)
-{
-	BlitCHR32x32(buffer, RAM, palette, x, y, rotate, (address + (frame * 64)));
-}
-
-#if 1
-static void DrawBitmapMirrorX(framebuffer_t* buffer, const chr_ram_t* RAM, const uint32_t* palette,
-	int32_t x, int32_t y, int32_t rotate, int32_t frame, int32_t address)
-{
-	BlitCHR16x32(buffer, RAM, palette, x + 0, y, 0, rotate, (address+(frame*32)));
-	BlitCHR16x32(buffer, RAM, palette, x + 8, y, 1, rotate, (address+(frame*32)));
-}
-#endif
 
 static void DrawWall(framebuffer_t* buffer, const chr_ram_t* RAM,
 	int32_t W, int32_t H, int32_t X, int32_t Y)
@@ -133,15 +132,17 @@ static void _DrawFrame(framebuffer_t* buffer, const game_state_t* state, const c
 		DrawTileMap(buffer, RAM, map->Tiles, map->x, map->y, 0, 0, map->DoorAlign);
 		DrawWall(buffer, RAM, map->x, map->y, 0, 0);
 		// NOTE: Entities
+#if 1
 		for (int32_t index = 0; index < state->EntityCount; index++)
 		{
-			const game_object_t* entity = state->Entities + index;
-			int32_t X = (entity->X) - 8;
-			int32_t Y = (entity->Y) - 8;
-			switch(entity->Type)
+			const game_object_t* Generic = state->Entities + index;
+			int32_t X = (Generic->X) - 8;
+			int32_t Y = (Generic->Y) - 8;
+			switch(Generic->Type)
 			{
 			case ENT_OCTOROCK:
 			{
+				const ent_octorock_t* entity = &Generic->_Octorock;
 				int32_t frame = (int32_t)fmodf((float)time * 5.0f, 2.0f);
 				//DrawBitmapMirrorX(buffer, RAM, PAL_RED, X, Y, entity->Facing, frame, CHR_OCTOROCK);
 				v2_t facingdir = entity->Facing;
@@ -162,33 +163,37 @@ static void _DrawFrame(framebuffer_t* buffer, const game_state_t* state, const c
 			{
 				DrawBitmapMirrorX(buffer, RAM, PAL_BLUE_ALPHA, X, Y, 0, (int32_t)(time * 5.0f) % 2, CHR_KEESE);
 			} break;
-			case ENT_BULLET:
+			case ENT_PROJECTILE_OCTOROCK:
 			{
 				//DrawBitmap(buffer, RAM, PAL_RED, X, Y, CHR_OCTOCOK_BULLET);
-				BlitRectangle(buffer, X, Y, 16, 16, RGB(255, 255, 255));
+				//BlitRectangle(buffer, X, Y, 16, 16, RGB(255, 255, 255));
+				BlitBoundingBox(buffer, Generic->X, Generic->Y, Generic->Bounds, RGB(255, 255, 255));
 			} break;
 			case ENT_SPAWN:
 			{
 				//int32_t R = LerpI(0, 255, sinf(entity->tSpawn));
 				//BlitRectangle(buffer, X, Y, 16, 16, RGB(R, R, 255-R));
-				DrawBitmapMirrorX(buffer, RAM, PAL_RED, X, Y, 0, (int32_t)(entity->tSpawn * 2.0f), CHR_EFFECT_SPAWN);
+				const ent_spawn_t* entity = &Generic->_Spawn;
+				DrawBitmapMirrorX(buffer, RAM, PAL_RED, X, Y, 0, (int32_t)(entity->tRemaining * 2.0f), CHR_EFFECT_SPAWN);
 			} break;
 			case ENT_PARTICLE_EFFECT:
 			{
-				DrawBitmapMirrorX(buffer, RAM, PAL_RED, X, Y, 0, (int32_t)(entity->tSpawn * 2.0f), CHR_EFFECT_SPAWN);
+				const ent_particle_t* entity = &Generic->_Particle;
+				DrawBitmapMirrorX(buffer, RAM, PAL_RED, X, Y, 0, (int32_t)(entity->tRemaining * 2.0f), CHR_EFFECT_SPAWN);
 			} break;
 			}
 		}
+#endif
 		// LINK
 		{
 			const game_object_t* entity = &state->Player;
-			DrawLink(buffer, RAM, entity, entity->X - 8, entity->Y - 8, state->Sword);
+			DrawLink(buffer, RAM, &entity->_Player, entity->X - 8, entity->Y - 8, state->Sword);
 		}
 	}
 	// NOTE: Transition
 	if ((state->RequestedRoom != 0))
 	{
-		v2_t exitdir = state->Player.ExitDir;
+		v2_t exitdir = state->Player.Facing;
 		const game_object_t* entity = &state->Player;
 		int32_t X = (buffer->x * -exitdir.x);
 		int32_t Y = ((buffer->y - 64) * exitdir.y);

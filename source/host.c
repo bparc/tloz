@@ -1,44 +1,29 @@
 #include "state.h"
 #include "draw.c"
 
-static inline void Intersect(game_state_t* state, game_object_t* entity, v2_t N, int32_t flags)
+static inline void Intersect(game_state_t* state, game_object_t* Generic, v2_t N, int32_t flags)
 {
-	if (!entity->Removed)
+	if (!Generic->WasRemoved)
 	{
-		switch (entity->Type)
+		switch (Generic->Type)
 		{
-		case ENT_BULLET:
+		case ENT_PROJECTILE_OCTOROCK:
 		{
-			Remove(entity);
+			Remove(Generic);
 		} break;
 		case ENT_PLAYER:
 		{
 			if (((flags & INTERSECT_OUT_OF_BOUNDS) && (N.y == 0)))
 			{
-				if ((entity->Facing.x == -N.x) && ((entity->Y - state->Map.DoorAlign[1]) == 8))
+				if ((Generic->Facing.x == -N.x) && ((Generic->Y - state->Map.DoorAlign[1]) == 8))
 				{
 					RoomTransition(state);
 				}
 				else
 				{
 					// ((entity->X - state->Map.DoorAlign[0]) == 8)
+					// RoomTransition(state);
 				}
-			}
-		} break;
-		case ENT_KEESE:
-		{
-			if (flags & INTERSECT_OUT_OF_BOUNDS)
-			{
-				entity->Facing = N;
-				entity->tChangeMovingDir = 0.0f;
-			}
-		} break;
-		case ENT_OCTOROCK:
-		{
-			if (flags & INTERSECT_OUT_OF_BOUNDS)
-			{
-				entity->Facing = N;
-				entity->tChangeMovingDir = 0.0f;
 			}
 		} break;
 		}
@@ -62,11 +47,11 @@ static int32_t Host(framebuffer_t* framebuffer, chr_ram_t* RAM, void* memory,
 			{
 				LoadRoomFromData(state, state->RequestedRoom);
 				state->RequestedRoom = NULL;
-				if (state->Player.ExitDir.x > 0)
+				if (state->Player.Facing.x > 0)
 				{
 					state->Player.X = ( - state->Map.Extends.x + state->Player.Bounds.X1);
 				}
-				if (state->Player.ExitDir.x < 0)
+				if (state->Player.Facing.x < 0)
 				{
 					state->Player.X = ( + state->Map.Extends.x - state->Player.Bounds.X1);
 				}
@@ -77,61 +62,56 @@ static int32_t Host(framebuffer_t* framebuffer, chr_ram_t* RAM, void* memory,
 		{
 			// PLAYER
 			{
-				if (cons->A)
+				ent_player_t* entity = &state->Player._Player;
+				entity->tAttack += dT * 4.0f;
+				if (entity->IsAttacking && entity->tAttack >= 1.0f)
 				{
-					if (!state->Player.IsAttacking && (state->Player.tRecovery >= 0.2f))
-					{
-						game_object_t* entity = &state->Player;
-						entity->IsAttacking = TRUE;
-						entity->tAttack = 0.0f;
-						sword_t* Sword = &state->Sword;
-						Sword->Bounds = (bb_t){ 0,0,0,0 };
-						if (entity->Facing.x > 0)
+					entity->IsAttacking = 0;
+				}
+				if (cons->A) // ATTACK
+				{
+					if (!entity->IsAttacking && (entity->tAttack >= 1.5f))
 						{
-							Sword->Bounds = BoundsFromRectangle(entity->X + 8, entity->Y - 2, 16, 2);
-						}
-						else
-						if (entity->Facing.x < 0)
-						{
-							Sword->Bounds = BoundsFromRectangle(entity->X - 26, entity->Y-2, 16, 2);
-						}
-						else
-						if (entity->Facing.y > 0)
-						{
-							Sword->Bounds = BoundsFromRectangle(entity->X - 2, entity->Y + 8, 2, 16);
-						}
-						else
-						if (entity->Facing.y < 0)
-						{
-							Sword->Bounds = BoundsFromRectangle(entity->X - 2, entity->Y - 26, 2, 16);
-						}
-						for (int32_t index = 0; index < state->EntityCount; index++)
-						{
-							game_object_t* B = state->Entities + index;
-							if (B->Flags & ENT_FLAGS_ENEMY)
+							entity->IsAttacking = TRUE;
+							entity->tAttack = 0.0f;
+							sword_t* Sword = &state->Sword;
+							Sword->Bounds = (bb_t){ 0,0,0,0 };
+							if (entity->Facing.x > 0)
 							{
-								if (TestBounds(TransformedBoundsFromEntity(B), state->Sword.Bounds))
+								Sword->Bounds = BoundsFromRectangle(entity->X + 6, entity->Y, 16, 2);
+							}
+							else
+							if (entity->Facing.x < 0)
+							{
+								Sword->Bounds = BoundsFromRectangle(entity->X - 22, entity->Y, 16, 2);
+							}
+							else
+							if (entity->Facing.y > 0)
+							{
+								Sword->Bounds = BoundsFromRectangle(entity->X, entity->Y + 7, 2, 16);
+							}
+							else
+							if (entity->Facing.y < 0)
+							{
+								Sword->Bounds = BoundsFromRectangle(entity->X - 2, entity->Y - 24, 2, 16);
+							}
+							for (int32_t index = 0; index < state->EntityCount; index++)
+							{
+								game_object_t* B = state->Entities + index;
+								if (B->Flags & ENT_FLAGS_ENEMY)
 								{
-									Remove(B);
-									spawn(state, B->X, B->Y, ENT_PARTICLE_EFFECT);
+									if (TestBounds(TransformedBoundsFromEntity(B), state->Sword.Bounds))
+									{
+										Remove(B);
+										spawn(state, B->X, B->Y, ENT_PARTICLE_EFFECT);
+									}
 								}
 							}
 						}
-					}
 				}
-				if (!state->Player.IsAttacking)
+				if (!entity->IsAttacking)
 				{
-					Move(state, &state->Player, cons->DPad, 60, dT, MOVE_ALIGN);
-				}
-				state->Player.tRecovery += dT;
-				if (state->Player.IsAttacking)
-				{
-					state->Player.tAttack += dT * 4.0f;
-					if (state->Player.tAttack >= 1.0f)
-					{
-						state->Player.IsAttacking = 0;
-						state->Player.tRecovery = 0;
-					}
+					MoveI(state, &state->Player, cons->DPad, 60, dT, MOVE_ALIGN);
 				}
 				for (int32_t index = 0; index < state->EntityCount; index++)
 				{
@@ -145,97 +125,107 @@ static int32_t Host(framebuffer_t* framebuffer, chr_ram_t* RAM, void* memory,
 					}
 				}
 			}
+#if 1
 			// ENTITIES
 			for (int32_t index = 0; index < state->EntityCount; index++)
 			{
-				game_object_t* entity = state->Entities + index;
-				if (!entity->Removed)
+				game_object_t* Generic = state->Entities + index;
+				if (!Generic->WasRemoved)
 				{
-					switch (entity->Type)
+					switch (Generic->Type)
 					{
 					case ENT_OCTOROCK:
 					{
-						entity->tChangeMovingDir += dT;
-						if (entity->tChangeMovingDir >= 1.0f)
+						ent_octorock_t* entity = &Generic->_Octorock;
+						entity->tChangeFacingDir += dT;
+						if (entity->tChangeFacingDir >= 1.0f)
 						{
 							entity->Facing = PickRandomCardinalDir();
-							entity->tChangeMovingDir = 0.0f;
+							entity->tChangeFacingDir = 0.0f;
 						}
 						entity->tShoot += dT;
 						if (entity->tShoot >= 1.0f)
 						{
-							CreateProjectile(state, entity->X, entity->Y, entity->Facing, 0);
+							CreateProjectile(state, entity->X, entity->Y, entity->Facing);
 							entity->tShoot = 0.0f;
 						}
-						Move(state, entity, entity->Facing, 20, dT, MOVE_ALIGN);
+						MoveI(state, Generic, Generic->Facing, 20, dT, MOVE_ALIGN);
 					} break;
 					case ENT_KEESE:
 					{
-						entity->tChangeMovingDir += dT * 0.5f;
-						if (entity->tChangeMovingDir >= 1.0f)
+						ent_keese_t* entity = &Generic->_Keese;
+						entity->tChangeFacingDir += dT * 0.5f;
+						if (entity->tChangeFacingDir >= 1.0f)
 						{
 							entity->Facing = PickRandomDir();
-							entity->tChangeMovingDir = 0.0f;
+							entity->tChangeFacingDir = 0.0f;
 						}
-						Move(state, entity, entity->Facing, 20, dT, MOVE_DO_NOT_INTERSECT);
+						MoveI(state, Generic, Generic->Facing, 20, dT, MOVE_DO_NOT_INTERSECT);
 					} break;
 					case ENT_TEKTITE:
 					{
+						ent_tektite_t* entity = &Generic->_Tektite;
 						entity->tJump += dT * 1.0f;
 						if (entity->tJump >= 1.0f)
 						{
 							if (!entity->HasJumped)
 							{
-								entity->JumpFrom = V2(entity->X, entity->Y);
-								entity->JumpTo = entity->JumpFrom;
-								entity->JumpTo.x += (rand() % 2 ? 64 : -64);
+								entity->From = V2(entity->X, entity->Y);
+								entity->To = V2(entity->From.x + (rand() % 2 ? 64 : -64), entity->From.y);
 								entity->HasJumped = TRUE;
 							}
 							float T = (entity->tJump - 1.0f);
 							{
-								entity->X = Lerp(entity->JumpFrom.x, entity->JumpTo.x, T);
-								entity->Y = JumpArc(20.0f, T * 5.0f) + entity->JumpFrom.y;
+								entity->X = Lerp(entity->From.x, entity->To.x, T);
+								entity->Y = (int32_t)(HalfArc(T * 1.0f) * 20.0f) + entity->From.y;
 							}
 							if (T >= 1.0f)
 							{
-								SetPosition(entity, entity->JumpTo);
+								SetPosition(Generic, entity->To);
 								entity->tJump = 0.0f;
 								entity->HasJumped = 0;
 							}
 							entity->X = ClampI(entity->X, 0, state->Map.Extends.x);
 						}
 					} break;
-					case ENT_BULLET:
+					case ENT_ZORA:
 					{
-						Move(state, entity, entity->Facing, 150, dT, 0);
+
+					} break;
+					case ENT_PROJECTILE_OCTOROCK:
+					{
+						MoveI(state, Generic, Generic->Facing, 150, dT, 0);
 					} break;
 					case ENT_SPAWN:
 					{
-						entity->tSpawn += dT * 2.0f;
-						if (entity->tSpawn >= 1.0f)
+						ent_spawn_t* entity = &Generic->_Spawn;
+						entity->tRemaining += dT * 2.0f;
+						if (entity->tRemaining >= 1.0f)
 						{
-							game_object_t* result = spawn(state, entity->X, entity->Y, entity->SpawnType);
-							result->Flags = ENT_FLAGS_ENEMY;
-							result->Bounds = BB(-8, -8, +8, +8);
+							game_object_t* result = spawn(state, entity->X, entity->Y, entity->EnemyType);
+							result->Flags = (ENT_FLAGS_ENEMY | ENT_FLAGS_CAN_DAMAGE);
 							result->Facing = PickRandomCardinalDir();
-							entity->Removed = TRUE;
+							result->Bounds = BB(-8, -8, +8, +8);
+							Remove(Generic);
 						}
 					} break;
 					case ENT_PARTICLE_EFFECT:
 					{
-						entity->tSpawn += dT * 2.0f;
-						if (entity->tSpawn >= 1.0f)
+						ent_particle_t* entity = &Generic->_Particle;
+						entity->tRemaining += dT * 2.0f;
+						if (entity->tRemaining >= 1.0f)
 						{
-							entity->Removed = TRUE;
+							Remove(Generic);
 						}
 					} break;
 					}
 				}
-				if (entity->Removed)
+				if (Generic->WasRemoved)
 				{
 					state->Entities[index--] = state->Entities[--state->EntityCount];
 				}
 			}
+#endif
 		}
 		//NOTE: Rendering
 		_DrawFrame(framebuffer, state, RAM,time);

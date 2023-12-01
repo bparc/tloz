@@ -145,9 +145,9 @@ static int32_t ClampI(int32_t X, int32_t min, int32_t max)
 	return result;
 }
 
-static int32_t JumpArc(float height, float t)
+static float HalfArc(float t)
 {
-	int32_t result = (int32_t)floorf(-fabsf(sinf((-t * (float)M_PI))) * height);
+	float result = -fabsf(sinf((-t * (float)M_PI)));
 	return result;
 }
 
@@ -157,9 +157,9 @@ static float Length(v2f_t X)
 	return result;
 }
 
-static v2f_t NormalizeI(v2_t X)
+static v2f_t Normalize(v2f_t X)
 {
-	v2f_t result = V2F((float)X.x,(float)X.y);
+	v2f_t result = X;
 	float length = Length(result);
 	if (length > 0.0f)
 	{

@@ -63,6 +63,14 @@ static void BlitCHR16x32(framebuffer_t* buffer, const chr_ram_t* RAM, const uint
 	BlitCHR(buffer, RAM, palette, x, y + (8-offsetY), rotateX, rotateY, address + 16);
 }
 
+static void BlitCHR32x16(framebuffer_t* buffer, const chr_ram_t* RAM, const uint32_t* palette, int32_t x, int32_t y,
+	int32_t rotateX, int32_t rotateY, int32_t address)
+{
+	int32_t offsetY = (8 * rotateY);
+	BlitCHR(buffer, RAM, palette, x + offsetY, y, rotateX, rotateY, address);
+	BlitCHR(buffer, RAM, palette, x + (8 - offsetY), y, rotateX, rotateY, address + 16);
+}
+
 static void BlitCHR32x32(framebuffer_t* buffer, const chr_ram_t* RAM, const uint32_t* palette, int32_t x, int32_t y, int32_t rotate, int32_t address)
 {
 	int32_t offset = (8 * rotate);
